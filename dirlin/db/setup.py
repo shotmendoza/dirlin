@@ -1,4 +1,3 @@
-import uuid
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,7 +77,9 @@ class SqlSetup(ABC):
         print(url)
         return url
 
-    def create_if_not_exist(self) -> None:
+    def create_db_if_not_exist(self) -> None:
+        """creates a database if one did not exist in the expected path.
+        """
         if not database_exists(self.url):
             self.Base.metadata.create_all(self.engine)
 

@@ -45,8 +45,8 @@ class ReadRecordWithTransactionID(Query):
 
     def execute(
             self,
-            table: DeclarativeBase,
-            model: BaseModel,
+            table: type[DeclarativeBase],
+            model: type[BaseModel],
             id_lookup: str,
             table_id_field: str,
     ) -> BaseModel:
