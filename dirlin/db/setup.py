@@ -1,6 +1,8 @@
+import uuid
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid5, NAMESPACE_DNS
 
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from sqlalchemy import Engine, create_engine
@@ -44,7 +46,9 @@ class SqlSetup(ABC):
         """
         return sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
 
-    def create_base_factory(self) -> type[DeclarativeBase]:
+    def create_base_factory(
+            self,
+    ) -> type[DeclarativeBase]:
         """generates a parent of a DeclarativeBase, used for table creation.
 
         Example:
@@ -62,7 +66,6 @@ class SqlSetup(ABC):
                         id: Mapped[int] = mapped_column(primary_key=True)
                         transaction_id: Mapped[str] = mapped_column(unique=True)
                 """
-                ...
             return Base
         return self.Base
 
@@ -78,3 +81,11 @@ class SqlSetup(ABC):
     def create_if_not_exist(self) -> None:
         if not database_exists(self.url):
             self.Base.metadata.create_all(self.engine)
+
+    @classmethod
+    def generate_uuid(cls, value: str) -> str:
+        """generates a usable UUID code for your table
+        """
+        namespace = uuid5(NAMESPACE_DNS, cls.__name__)
+        uuid_val = str(uuid5(namespace, value))
+        return uuid_val
