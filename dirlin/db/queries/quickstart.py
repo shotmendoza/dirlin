@@ -48,14 +48,16 @@ class ReadRecordWithTransactionID(Query):
             self,
             table: type[DeclarativeBase],
             model: type[BaseModel],
-            id_lookup: str,
             table_id_field: str,
-    ) -> BaseModel:
+            id_lookup: str | None = None,
+    ) -> type[BaseModel]:
         with self.setup.session.begin() as sesh:
-            query = sesh.execute(
-                select(table).where(getattr(table, table_id_field) == id_lookup)  # type:ignore
-            )
-            return model.model_validate(query.scalar_one())
+            query = sesh.execute(select(table))
+            if id_lookup is not None:
+                query = sesh.execute(
+                    select(table).where(getattr(table, table_id_field) == id_lookup)  # type:ignore
+                )
+            return model.model_validate(query.scalar_one())  # type:ignore
 
 
 __all__ = ['CreateOrUpdateRecord', 'ReadRecordWithTransactionID']
