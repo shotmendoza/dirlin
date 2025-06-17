@@ -37,7 +37,7 @@ class SqlSetup(ABC):
 
         if self.Base is None:
             base = self.create_base_factory()
-            object.__setattr__(self, '_Base', base)
+            object.__setattr__(self, 'Base', base)
 
     def _generate_engine(self) -> Engine:
         """creates an engine based off the init `url` property.
