@@ -31,7 +31,8 @@ class CreateOrUpdateRecord(Query):
                 sesh.add(new_record)
             else:
                 sesh.execute(
-                    update(table),
+                    update(table)
+                    .where(getattr(table, table_id_field) == getattr(model, model_id_field)),  # type:ignore
                     model.model_dump(exclude={model_id_field: True}, exclude_none=True)
                 )
 
