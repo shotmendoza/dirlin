@@ -76,7 +76,7 @@ class ReadTable(Query):
     ):
         with self.setup.session.begin() as sesh:
             query = sesh.execute(select(table))
-        return pd.DataFrame(query.fetchall(), columns=list(query.keys()))
+            return pd.DataFrame(query.fetchall(), columns=list(query.keys()))
 
 
 __all__ = ['CreateOrUpdateRecord', 'ReadRecordWithTransactionID', 'ReadTable']
