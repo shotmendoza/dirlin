@@ -59,7 +59,7 @@ class SqlSetup(ABC):
                 __tablename__ = "bank_statements"
                 id: Mapped[int] = mapped_column(primary_key=True)
         """
-        if self._Base is None:
+        if self.Base is None:
             class Base(DeclarativeBase):
                 """used for creating different SqlAlchemy tables. Tables will usually inherit from this class.
 
@@ -70,7 +70,7 @@ class SqlSetup(ABC):
                         transaction_id: Mapped[str] = mapped_column(unique=True)
                 """
             return Base
-        return self._Base
+        return self.Base
 
     @classmethod
     def _resolve_db_path(cls):
@@ -85,7 +85,7 @@ class SqlSetup(ABC):
         """creates a database if one did not exist in the expected path.
         """
         if not database_exists(self.url):
-            self._Base.metadata.create_all(self.engine)
+            self.Base.metadata.create_all(self.engine)
 
     @classmethod
     def generate_uuid(cls, value: str) -> str:
