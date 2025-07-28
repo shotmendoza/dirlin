@@ -14,17 +14,15 @@ dependencies = [
     "numpy<2.0.0",
     "tqdm~=4.67.1",
     "pyxlsb==1.0.10",
+    "sqlalchemy",
+    "pydantic",
     "pdfplumber==0.11.6",
     "pypdf==5.6.0",
-    "pypdf2",
-    "sqlalchemy",
-    "pydantic"
+    "pypdf2"
 ]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3"
-setuptools = "^80"
-
-#[build-system]
-#requires = ["poetry-core"]
-#build-backend = "poetry.core.masonry.api"
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "setuptools"
+]
