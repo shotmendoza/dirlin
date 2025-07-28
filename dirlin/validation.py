@@ -9,7 +9,7 @@ from typing import Any, Callable, Literal
 import pandas as pd
 from tqdm import tqdm
 
-from dirlin.core.util import DirlinFormatter, TqdmLoggingHandler
+from dirlin.core.api import DirlinFormatter, TqdmLoggingHandler
 
 
 @dataclasses.dataclass
