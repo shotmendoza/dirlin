@@ -18,10 +18,6 @@ from dirlin.validation import (
     BaseValidation  # used for Validation pipeline
 )
 
-from dirlin.pdf import (
-    PDFFile  # used for handling PDF and parsing PDFs
-)
-
 import pandas  # using the Pandas library
 import numpy  # using the numpy lib
 

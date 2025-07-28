@@ -14,7 +14,6 @@ import pandas.errors
 import chardet
 from tqdm import tqdm
 
-from dirlin.pdf import PDFFile
 from dirlin.core.api import Document, DirlinFormatter, TqdmLoggingHandler
 
 
@@ -392,9 +391,14 @@ class Folder:
 
         # Handling PDFs
         elif file_path.suffix in _image_types:  # pdf
-            pdf = PDFFile(file_path)
-            df = pdf.to_dataframe(*args, **kwargs)
-            return df
+            try:
+                from dirlin.pdf import PDFFile
+                pdf = PDFFile(file_path)
+                df = pdf.to_dataframe(*args, **kwargs)
+                return df
+            except ImportError as import_error:
+                print(import_error)
+                print(f"run pip install dirlin[pdf] to install PDF capabilities")
 
         # for the web / Google Sheets
         try:
