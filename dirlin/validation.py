@@ -3,98 +3,15 @@
 import dataclasses
 import inspect
 import logging
-import re
 from collections import defaultdict
 from collections.abc import Collection
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 import pandas as pd
 from tqdm import tqdm
 
 from dirlin.core.api import DirlinFormatter, TqdmLoggingHandler
-
-
-@dataclasses.dataclass
-class _ResultWrapper:
-    """used as a wrapper for the results coming from either a scalar function
-    or a Series type function.
-
-    Fields:
-        - `result`: a pd.Series type variable that holds the results from running the function
-        - `parameters_used`: a str type variable that holds the string name of the check that will be put in the
-        deliverable the name is the name of all the parameters combined, and currently, not the name of the function
-        - `function_name`: a str type variable signifying the name of the function used to validate
-    """
-    result: pd.Series
-    """stores the results of the validation in the BaseValidation object"""
-
-    parameters_used: str
-    """stores the name of the check that will be put in the deliverable"""
-
-    function_name: str
-    """name of the function we are running"""
-
-    function_description: str
-    """description of what the function checks for based on docstrings"""
-
-
-@dataclasses.dataclass
-class _PipelineSubclassInterface:
-    """Is the interface / protocol for communication between the Data Source, Pipeline, and the Result objects.
-    Each of the objects will have a method that can be invoked that will pull in the necessary information
-    that it needs in order to complete a request
-    """
-    ###############################
-    # INTERFACE CHECKS AND CONFIGS
-    ###############################
-    _missing_columns: dict[str, list]
-    """stores the data on any DataSources that are missing the expected columns based on the params"""
-
-    ######################
-    # FROM DATASOURCE
-    ######################
-    alias_mapping: dict | None = None
-    """for storing alias related conversion and mapping"""
-    reports: dict | None = None
-    """used to store the name: report mapping, used to classify the reports for the final results"""
-    records: dict | None = None
-    """used to store records by DataSource"""
-
-    ########################
-    # FROM PIPELINE
-    ########################
-    name: dict | str | None = None
-    """stores the pipeline name it was ran on"""
-    fn_map: dict[str, Callable] | None = None
-    """stores the fn name and the actual function so that the Bound Args can be run"""
-    fn_signature_map: dict[str, inspect.Signature] | None = None
-    """stores the function and the signature that was defined by the user in the Pipeline"""
-
-    ##########################
-    # From Results
-    ##########################
-    results: dict | None = None  # on Data Source level
-    """stores the results from the pipeline"""
-
-    #########################
-    # FUNCTIONS
-    #########################
-
-    def get_pipeline_data(self) -> dict:
-        """returns data that is usually populated by the Pipeline
-        """
-        return {
-            "name": self.name,
-            "fn_map": self.fn_signature_map,
-            "fn_signature_map": self.fn_signature_map
-        }
-
-    def get_source_records(self) -> dict:
-        """since we expect DataSource to create the records based
-        on the Pipeline data, which is stored as a record, this
-        function returns the records given by the DataSource
-        """
-        return self.records
+from dirlin.dq.interfaces import ResultWrapper
 
 
 @dataclasses.dataclass
@@ -472,7 +389,7 @@ class _BaseValidationCheck:
 class _Deliverable:
     @staticmethod
     def run_summary(
-            results: dict[str, _ResultWrapper],
+            results: dict[str, ResultWrapper],
             group_name: str | None = None
     ) -> pd.DataFrame:
         """creates a basic summary dataframe with the pass / fail for each check.
@@ -513,7 +430,7 @@ class _Deliverable:
 
     @staticmethod
     def run_error_log(
-            results: dict[str, _ResultWrapper],
+            results: dict[str, ResultWrapper],
             df: pd.DataFrame,
             group_name: str | None = None
     ) -> pd.DataFrame:
@@ -580,7 +497,7 @@ class BaseValidation:
     _logger.addHandler(tqdm_logger)
 
     @classmethod
-    def _run_validation(cls, df: pd.DataFrame) -> dict[str, _ResultWrapper]:
+    def _run_validation(cls, df: pd.DataFrame) -> dict[str, ResultWrapper]:
         """main function for BaseValidation, and runs the validation functions under the class,
         and returns a dictionary.
 
@@ -656,7 +573,7 @@ class BaseValidation:
             function_args: dict[str, list[dict]],
             function_docs: dict[str, str],
 
-    ) -> dict[str, _ResultWrapper]:
+    ) -> dict[str, ResultWrapper]:
         """identifies the type of function we are dealing with, and will run the
         function and its arguments according to its needs. For example, a parameter of type pd.Series will
         run differently than a function running based on float.
@@ -707,7 +624,7 @@ class BaseValidation:
             df: pd.DataFrame,
             args_list: list[dict[str, str]],
             docs: str,
-    ) -> list[_ResultWrapper]:
+    ) -> list[ResultWrapper]:
         """processes the class function assuming every parameter has a pd.Series as the param type, and also
         returns a pd.Series type
 
@@ -732,7 +649,7 @@ class BaseValidation:
         # todo 2025.05.07 make the process_function (x2) more OOP -- the ResultWrapper should be handled on level up
         # list comprehension to get all the results as a list
         deliverable = [
-            _ResultWrapper(
+            ResultWrapper(
                 result=function(**args),
                 parameters_used=name,
                 function_name=function_name,
@@ -750,7 +667,7 @@ class BaseValidation:
             df: pd.DataFrame,
             args_list: list[dict[str, str]],
             docs: str,
-    ) -> list[_ResultWrapper]:
+    ) -> list[ResultWrapper]:
         """processes the class function assuming every parameter has a scalar as the param type, and returns
         a single scalar type as well
 
@@ -781,7 +698,7 @@ class BaseValidation:
             # Step 3: Formatting and Return
             check_name = cls._formatter.convert_dict_to_ref_names(args_pair)
             deliverable.append(
-                _ResultWrapper(
+                ResultWrapper(
                     result=pd.Series(results),
                     parameters_used=check_name,
                     function_name=function_name,
@@ -971,222 +888,4 @@ class BaseValidation:
 # THIRD ITERATION
 ################################
 
-class DataSource(_HandleColumnsParams):
-    registry = list()
-    """Will be used to initialize all the Subclasses of Data Source so we can run the pipeline at once"""
 
-    def __init__(
-            self,
-            source_name: str,
-            data: pd.DataFrame,
-            alias_mapping: dict[str, list | str] | None = None,
-    ):
-        super().__init__(_obj=self, _reports=data)
-
-        # === Init for Alias and Columns ===
-        if alias_mapping is None:
-            alias_mapping = dict()
-        self._alias_mapping = alias_mapping
-        self._columns = dict()
-
-        # === Initializing the Data ===
-        self.name = source_name
-        self.data = self._run_verify_data(data)
-
-        # === Pipeline Related Data ===
-        self.pipeline: _PipelineSubclassInterface | None = None
-        self.signatures: dict | None = None
-        self._all_functions: dict | None = None
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.registry.append(cls)
-
-    def _run_verify_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        self._verify_aliases()
-        self._verify_columns()
-        return data
-
-    def _verify_aliases(self):
-        ...
-
-    def _verify_columns(self):
-        ...
-
-    def init_pipeline_fn(
-            self,
-            pipeline_info: _PipelineSubclassInterface
-    ) -> Any:
-        """function used to primarily initialize the Data Source so that it is usable with the pipeline.
-        It will take the function mapping from the Pipeline in order to determine whether the `alias_map`,
-        `columns` and any other properties are ready to go through the Pipeline.
-
-        The pipeline gives the information through the PipelineSubclass Interface to make it easier to communicate.
-        """
-        # Initializing its own data with the Pipeline data
-        self.pipeline = pipeline_info
-        self.signatures = self.pipeline.fn_signature_map.copy()
-        self._all_functions = self.pipeline.fn_map.copy()
-
-        self.I = _HandleColumnsParams(_obj=self, _reports=self.data)
-        return self
-
-    def run_pipeline_fn(self) -> dict[str, list]:
-        """applies the class function to a single DataFrame and returns the results based
-        on the records that were saved earlier.
-        """
-        result = {}
-        for name, fn in self._all_functions.items():
-            # Keep tabs on this. We might just be keeping the kwargs portion
-            if not str(name).startswith("__"):
-                fn_output = [fn(*record.args, **record.kwargs) for record in self.I.fn_records[name]]
-                result[name] = fn_output
-        self.pipeline.results = result
-        return result
-
-
-class Pipeline:
-    """Handles running checks on a class level
-
-    Properties we expect from the subclasses inheriting from the Pipeline (important when we run the checks)
-        1. `alias_mapping` to tie out the columns and parameters
-        2. `reports` to tie out the dataframes we want to run through the checks
-
-    """
-    register: list = []
-
-    alias_mapping: dict[str, list | str] | None = dict()
-    """used to define columns that don't exact-match a parameter in the object,
-    but we want to use as an argument in the parameter.
-
-    For example, if we have a column `Total Price` but our test function uses `price`
-    as the parameter of the function, we would add `Total Price` as the value under
-    `price` in the alias_mapping key-value pair. This would look like this:
-    `{"price": ["Total Price]"}`.
-
-    Is a key-value pair of {`parameter name`: [`associated columns`]}, and will tie into
-    the function. The error code for `_verify_column_ties_to_parameter` will also notify
-    you to add missing parameters into this variable as a dict.
-    """
-
-    def __init__(self):
-        """Base Class for handling the Function validation. Will prep the function side of the equation
-        so that no arise will come up when processing.
-
-        1. Gets all the functions and their names
-        2. Will grab the docstrings for the functions
-        3. Will grab the function signatures
-        """
-
-        # === Private Properties ===
-        self._all_functions = self._get_all_functions()
-        """property that holds data regarding all the functions in the class (will be relevant when inheriting)
-        """
-        self._deliverable_handler = _Deliverable()
-        """Handles the final `run()` output and determines the deliverable
-        """
-
-        # ---PUBLIC API Properties---
-        self.docs = self._get_function_docstrings()  # getting the function docstrings
-        self.signatures = self._get_function_signatures()  # getting the function signatures
-        """uses the inspection package to grab a function's signature. This helps bind arguments to the function eaiser
-        """
-        self.reports: Collection[DataSource] | DataSource | None = None
-        """Saves the reports that were used"""
-        self.results = None
-        """Holds the results from the `run()` function"""
-
-    def __init_subclass__(cls, **kwargs):
-        """init for the subclass, we'll keep track of the subclasses that inherits from this base class
-        so that we can run all the validations at the same time.
-        """
-        super().__init_subclass__(**kwargs)
-
-        # CONFIRM THAT THE ALIAS AND REPORTS HAVE BEEN DEFINED
-        subclass_defined_properties = cls.__dict__.keys()
-        Pipeline.register.append(cls)
-
-    def _get_all_functions(self):
-        """Pulls all the functions under the class. This is used to create the mapping in the class (usually the key)"""
-        all_functions = dict()
-        for validation_class in inspect.getmro(self.__class__)[:-2]:
-            temp_functions = {
-                function.__name__: function for check, function in validation_class.__dict__.items()
-                if inspect.isfunction(function) or inspect.ismethod(function)
-            }
-            all_functions = all_functions | temp_functions
-        return all_functions
-
-    def _get_function_docstrings(self, scope: Literal["first", "all"] = "first") -> dict[str, str]:
-        """helper function used to extract the function docstrings. This will then be used for the final error log
-        to show the description of what each check is doing based on the docstrings.
-
-        :param scope: ['first', 'all'] determines whether to grab the first sentence of the docstring or to capture
-        the entire docstring. Default is 'first'.
-        """
-        try:
-            docstring_mapping = dict()
-            for check_name, function in self._all_functions.items():  # has the check_name: check kv pairs
-                docstring = inspect.getdoc(function)
-                if not docstring:
-                    docstring = f"No description for {check_name}."
-                    docstring_mapping[check_name] = docstring
-                    continue
-                # Now assuming we have a docstring, we'll go through the scope param
-                if scope == "all":
-                    docstring_mapping[check_name] = docstring  # just send out what we have
-                    continue
-                elif scope == "first":
-                    # matches for any (.), (!), (?) and or a new line
-                    first = re.match(r"(.*?[.!?])(?:\s|$)|([^\n*]*)", docstring, re.DOTALL)
-                    docstring_mapping[check_name] = (first.group(1) or first.group(2)).strip() if first else docstring
-        except Exception as exc:
-            raise exc
-        return docstring_mapping
-
-    def _get_function_signatures(self) -> dict[str, inspect.Signature]:
-        """helper function used to get the function signatures. Helpful for binding arguments, checking params,
-        or figuring out what's needed to process the function.
-        """
-        try:
-            signature_mapping = dict()
-            for check_name, function in self._all_functions.items():
-                if check_name != "__init__":
-                    signature_mapping[check_name] = inspect.signature(function)
-        except Exception as exc:
-            raise exc
-        return signature_mapping
-
-    def run(self):
-        """runs the checks that was assigned to this class as a property, and applies the checks to the report.
-        Each report will generate a Result object, that can later be used as an Error Log or Error Summary so that
-        the end user can apply further actions to errors.
-        """
-        updated_source = []
-        for source in self.reports:
-            result = source.run_pipeline_fn()
-
-            updated_source.append(source)
-        self.reports = updated_source
-        return self.reports
-
-    def load_data_sources(
-            self,
-            sources: DataSource | Collection[DataSource],
-    ) -> None:
-        """This will take the given data sources, and give it the data that it needs through
-        the PipelineSubclass Interface. The Data Source will then use this data to initialize
-        and create records that the pipeline will use for its checks.
-        """
-        # initializing Pipeline information that's needed
-        name = self.__class__.__name__
-
-        pipeline_info = _PipelineSubclassInterface(
-            name=name,
-            fn_signature_map=self.signatures,
-            fn_map=self._all_functions
-        )
-
-        if isinstance(sources, DataSource):
-            self.reports = [sources.init_pipeline_fn(pipeline_info)]
-        self.reports = [source.init_pipeline_fn(pipeline_info) for source in sources]

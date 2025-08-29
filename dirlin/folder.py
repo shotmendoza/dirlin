@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 from urllib.error import HTTPError
 
 import pandas as pd
-import pandas.errors
 
 import chardet
 from tqdm import tqdm
@@ -364,7 +363,7 @@ class Folder:
                 if add_source is True:
                     df["From"] = file_path.stem
                 return df
-            except pandas.errors.ParserError:
+            except pd.errors.ParserError:
                 self.logger.warning(f"Could not parse in C, attempting to reparse in Python...")
                 return pd.read_csv(file_path, engine='python', on_bad_lines='warn', *args, **kwargs)
             except UnicodeDecodeError as uni_error:

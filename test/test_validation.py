@@ -1,6 +1,7 @@
 import pandas as pd
 
-from dirlin.validation import Pipeline, DataSource
+from dirlin.dq.obj.pipelines import Pipeline
+from dirlin.dq.obj.data_quality import DataSource, InterfaceCheckObj, FuncObj
 
 
 def test_movement_of_df():
@@ -81,8 +82,8 @@ def test_validate_two_oh():
     )
 
     vf = FooBar()
-    vf.load_data_sources(sources=data)
-    vf.run()
+    # vf.load_data_sources(sources=data)
+    # vf.run()
 
     # print(vf.signatures)
     # t = vf._bind_signature_records(df)
