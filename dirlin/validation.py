@@ -3,40 +3,226 @@
 import dataclasses
 import inspect
 import logging
-import re
-from typing import Any, Callable, Literal
+from collections import defaultdict
+from collections.abc import Collection
+from typing import Any, Callable
 
 import pandas as pd
 from tqdm import tqdm
 
 from dirlin.core.api import DirlinFormatter, TqdmLoggingHandler
+from dirlin.dq.interfaces import ResultWrapper
 
 
 @dataclasses.dataclass
-class _ResultWrapper:
-    """used as a wrapper for the results coming from either a scalar function
-    or a Series type function.
+class _HandleColumnsParams:
+    """MIGHT NEED IN FUTURE IF WE ARE TO TIE THIS TO THE PIPELINE AGAIN
 
-    Fields:
-        - `result`: a pd.Series type variable that holds the results from running the function
-        - `parameters_used`: a str type variable that holds the string name of the check that will be put in the
-        deliverable the name is the name of all the parameters combined, and currently, not the name of the function
-        - `function_name`: a str type variable signifying the name of the function used to validate
+    Manages the column, alias, parameter relationship until they get created into
+    single records. Since this is on a report level, we will handle this individually and separate from the main
+    class.
     """
-    result: pd.Series
-    """stores the results of the validation in the BaseValidation object"""
+    _obj: "Pipeline" or "DataSource"
 
-    parameters_used: str
-    """stores the name of the check that will be put in the deliverable"""
+    _reports: Collection[pd.DataFrame] | pd.DataFrame
 
-    function_name: str
-    """name of the function we are running"""
+    _signatures: dict | None = None
+    """The mapping of the signatures under all functions in the subclasses"""
 
-    function_description: str
-    """description of what the function checks for based on docstrings"""
+    ##########################################################
+    # Properties Related to Aliases and Columns as parameters
+    ##########################################################
+    aliases: dict | None = None
+    """The mapping of the aliases under all of the subclasses"""
+
+    columns: dict | None = None
+    """The columns tied to parameters"""
+
+    params: dict | None = None
+    """The combination of aliases and columns. The function responsible for getting this data ensures that
+    no alias or column data is overwritten in cases one parameter is used in multiple functions.
+    """
+
+    #######################################################################
+    # Properties related to adding bound arguments to signatures by record
+    #######################################################################
+    fn_records: dict | None = None
+    """Stores the alias/column param records under the function so we can rapid fire run the functions."""
+
+    def __post_init__(self):
+        # CHECK TO MAKE SURE THE NECESSARY FUNCTION WAS RAN FIRST
+
+        # === Ensures that Alias, Columns, Params, Signatures have all been `saved` into the subclasses
+        self._initialize_alias_and_column_properties()
+
+    def _get_alias_from_subclass(self):
+        """goes down the inheritance chain and pulls the alias_mapping from each subclass.
+        We centralize this data so that it can be used at any point in time.
+        """
+        ##########################################################
+        # COMBINES ALL CLASS LEVELS OF ALIASES INTO ONE ALIAS
+        ##########################################################
+        # The idea is to take all the user defined alias_mapping from each subclass and make it into one dictionary
+        aliases: dict | None = None
+        for subclass in inspect.getmro(self._obj.__class__)[:-1]:
+            if "alias_mapping" in subclass.__dict__:
+                temp = subclass.__dict__["alias_mapping"]  # holds the user-defined alias_mapping dict
+                if aliases is None:
+                    aliases = temp
+                    continue
+                # now I want to check to ensure we're not overriding values from the higher level classes
+                override_param = {}
+                for param, col in temp.items():
+                    try:
+                        aliases[param]  # check for keyword in dict
+                    except KeyError:  # is a new parameter we want to add
+                        override_param[param] = col
+                aliases = aliases | override_param
+
+        self.aliases = aliases
+        return aliases
+
+    def _get_columns_from_subclass(self):
+        """Maps out any parameters that matches with a column name
+        """
+        ##########################################################
+        # Grabs all the columns that match with a parameter
+        ##########################################################
+        if not isinstance(self._reports, pd.DataFrame):  # wording / order matters. Collection treats DF as collection
+            # weird way to do it, but we're going to combine all columns, and do it that way for now
+            all_columns = list(set(column for report in self._reports for column in report.columns))
+        else:
+            all_columns = self._reports.columns
+
+        col_mapping = {
+            p: p
+            for fn, sig in self._obj.signatures.items()
+            for p in sig.parameters.keys() if p in all_columns
+        }
+
+        self.columns = col_mapping
+        return col_mapping
+
+    def _initialize_alias_and_column_properties(self) -> None:
+        """combines parameters that match directly with the column name in the report,
+        as well as the user defined aliases.
+        """
+        #########################################################################
+        # (1) CREATE A SINGLE PARAMETER MAPPING BASED ON COLUMNS AND USER INPUT
+        #########################################################################
+        try:
+            self._signatures = self.signatures.copy()
+        except AttributeError:
+            self._signatures = self._obj.signatures.copy()
+
+        #################
+        # LOGGER CONFIG
+        #################
+        _number_of_processes_in_class = 2 + len(self._signatures)
+        pbar = tqdm(total=_number_of_processes_in_class, desc="Initializing Aliases and Columns...")
+
+        pbar.set_description(desc="Confirming all required functions have run...")
+        # === [1] Ensure all required functions have run ===
+        if any((self.aliases is None, self._signatures is None)):
+            self._get_alias_from_subclass()
+        if self.columns is None:
+            self._get_columns_from_subclass()
+        pbar.update()
+
+        pbar.set_description(desc="Confirming all required functions have run...")
+        # === [2] Combine the two different sources into one source ===
+        if self.params is None:
+            self.params = defaultdict(list)
+        for param, col in self.aliases.items():
+            self.params[param].append(col) if isinstance(col, str) else self.params[param].extend(col)
+        for param, col in self.columns.items():
+            self.params[param].append(col) if isinstance(col, str) else self.params[param].extend(col)
+        pbar.update()
+
+        ##########################################################
+        # (2) CREATE THE RECORDS
+        ##########################################################
+        # initialize the relationship properties
+        self.fn_records = {}
+
+        # There's cases when we use the same parameter for multiple functions, which is why we are doing it the hard way
+        for fn, sig in self._signatures.items():
+            pbar.set_description(f"Generating records for {fn}")
+            # === [3.1] We only want one-many information right now===
+            curr_fn_params = [
+                p for p in sig.parameters
+                if p in self.params and len(self.params[p]) != 1
+            ]
+            curr_one_to_many = [
+                self.params[p] for p in curr_fn_params
+                if p in self.params and len(self.params[p]) != 1
+            ]
+            # === [3.2] Now we're going to make them into arg records ===
+            curr_records = [dict(zip(curr_fn_params, x)) for x in zip(*curr_one_to_many)]
+
+            # === [4.1] Now let's take care of adding the one-to-one to the current records we have ===
+            curr_one_to_one = {
+                p: self.params[p] if len(self.params[p]) != 1 else self.params[p][0]  # want to remove it from list form
+                for p in sig.parameters if p in self.params and len(self.params[p]) == 1
+            }
+            # === [4.2] There was an edge case where it would return blank if no many-to-many relationship
+            if not curr_records and curr_one_to_one:
+                self.fn_records[fn] = [curr_one_to_one]
+                pbar.update()
+                continue
+            curr_records = [curr_one_to_one | record for record in curr_records]
+            self.fn_records[fn] = curr_records
+            pbar.update()
+        pbar.set_description("Record Generation Complete!")
+        pbar.close()
+
+    def bind_signature_records(self, report: pd.DataFrame | None = None) -> dict[Any, list]:
+        """Binds the arguments into records using the aliases and columns provided.
+        """
+        #############################
+        # (3) INITIALIZE SUBCLASSES
+        #############################
+        # === Prepping for the Alias Properties ===
+        if not report:
+            if self._reports is None:
+                raise ValueError("No reports provided. Need to initialize with one or, add as an argument to function.")
+            report = self._reports.copy()
+
+        # === Scalars Handling ===
+        handle_fn_as_scalar = {
+            fn: not any(
+                (t.annotation in (pd.Series, pd.DataFrame) for pt, t in sig.parameters.items())
+            ) for fn, sig in self._signatures.items()
+        }
+
+        #################################
+        # (4) GENERATING THE SIGNATURES
+        #################################
+        function_bound_records = {}  # for running the arguments on the functions later
+        for fn, sig in self._signatures.items():
+            #############
+            # THE SETUP
+            #############
+            curr_records = self.fn_records[fn]
+            uses_scalar_fn = handle_fn_as_scalar[fn]
+
+            # === [1.1] We only care about scalars to start ===
+            if uses_scalar_fn:
+                curr_reversed_map = [{v: k for k, v in arg.items()} for arg in curr_records]
+                temp_transaction_hold = [
+                    report[r.keys()].rename(columns=r).to_dict(orient="records")
+                    for r in curr_reversed_map
+                ]
+                # === [1.2] Now we apply the arguments to the bound signature ===
+                temp = [sig.bind_partial(**record) for aliases in temp_transaction_hold for record in aliases]
+            else:
+                temp_transaction_hold = [{p: report[col] for p, col in arg.items()} for arg in curr_records]
+                temp = [sig.bind_partial(**aliases) for aliases in temp_transaction_hold]
+            function_bound_records[fn] = temp
+        return function_bound_records
 
 
-class _BaseValidationVerifier:
+class _BaseValidationCheck:
     def __init__(
             self,
             df: pd.DataFrame,
@@ -47,7 +233,25 @@ class _BaseValidationVerifier:
     ):
         """used for running verification on the core class to ensure that the formatting
         and organization of the dataframe is correct, and made in a way that the BaseValidation
-        object can handle
+        object can handle.
+
+        This class will handle the collection of needed data (functions, function param, dataframe) and
+        hold the data for the Base Validation class to use.
+
+        Methods with the name `verify` is used for ensuring that the entire pipeline can run without
+        errors.
+
+        Methods with `get` are used for gathering the fields and data that are required for the
+        BaseValidation class, and verifying the pipeline.
+
+        Methods with `map` are responsible for tying together the Dataframe column names to the parameters
+        of the check functions
+
+        The workflow would look like this:
+            1. Get the user defined alias_mapping to map columns to the parameters
+            2. Verify all expected parameters have a column tied to it
+            3. Verify expected return type
+            4. Verify values in the columns
 
         :param df: the dataframe we are verifying that follows the formatting for BaseValidation
         :param function_return_type: dictionary of {`check`: `return_type`}. Pulled from `_get_function_return_type`
@@ -179,8 +383,69 @@ class _BaseValidationVerifier:
         self._verify_column_ties_to_parameter()  # validates that all parameters are accounted for
         self._verify_function_params_match()  # verifies that parameter types are uniform
         self._verify_function_param_return_match()  # need input for the type of func param
-
         return True
+
+
+class _Deliverable:
+    @staticmethod
+    def run_summary(
+            results: dict[str, ResultWrapper],
+            group_name: str | None = None
+    ) -> pd.DataFrame:
+        """creates a basic summary dataframe with the pass / fail for each check.
+
+        Columns:
+            - Check Function Name: name of the function used for the validation
+            - Total Records Validated: the number of records that were validated in total
+            - Total Records Passed: the number of records that successfully passed the validation
+            - Total Records Failed: the number of records that failed the validation
+        """
+        # todo this function and run_error_log should both be under the same class Result
+        # this will allow you to do result.run_summary or result.run_validation, result.error_log
+
+        # Summary without the validation_name
+        if group_name is None:
+            summary = {
+                check_name: {
+                    "Check Function Name": r.function_name,
+                    "Check Description": r.function_description,
+                    "Total Records Validated": r.result.count(),
+                    "Total Records Passed": r.result.sum(),
+                    "Total Records Failed": len(r.result) - r.result.sum(),
+                } for check_name, r in results.items()
+            }
+        else:
+            summary = {
+                check_name: {
+                    "Group": group_name,
+                    "Check Function Name": r.function_name,
+                    "Check Description": r.function_description,
+                    "Total Records Validated": r.result.count(),
+                    "Total Records Passed": r.result.sum(),
+                    "Total Records Failed": len(r.result) - r.result.sum(),
+                } for check_name, r in results.items()
+            }
+        result = pd.DataFrame(summary).T.reset_index().sort_values("Total Records Failed", ascending=False)
+        return result
+
+    @staticmethod
+    def run_error_log(
+            results: dict[str, ResultWrapper],
+            df: pd.DataFrame,
+            group_name: str | None = None
+    ) -> pd.DataFrame:
+        """gives you a Dataframe with the records that failed the validation
+        """
+        results_filter = []
+        for check_name, r in results.items():
+            temp_df = df[~r.result].copy()
+            temp_df["Check"] = r.function_name
+            if group_name is not None:
+                temp_df["Group"] = group_name
+            results_filter.append(temp_df)
+
+        _df_results = pd.concat(results_filter, ignore_index=True)
+        return _df_results
 
 
 # 2025.02.26 - creating new architecture for the quick pipeline
@@ -218,23 +483,11 @@ class BaseValidation:
 
     """
 
-    _validator: _BaseValidationVerifier = _BaseValidationVerifier
+    _validator: _BaseValidationCheck = _BaseValidationCheck
     _formatter: DirlinFormatter = DirlinFormatter()
     """class level utility functions for parsing strings, numbers, and pd.Series"""
 
-    alias_mapping: dict[str, list | str] | None = dict()
-    """used to define columns that don't exact-match a parameter in the object,
-    but we want to use as an argument in the parameter.
-
-    For example, if we have a column `Total Price` but our test function uses `price`
-    as the parameter of the function, we would add `Total Price` as the value under
-    `price` in the alias_mapping key-value pair. This would look like this:
-    `{"price": ["Total Price]"}`.
-
-    Is a key-value pair of {`parameter name`: [`associated columns`]}, and will tie into
-    the function. The error code for `_verify_column_ties_to_parameter` will also notify
-    you to add missing parameters into this variable as a dict.
-    """
+    _report_creation: _Deliverable
 
     # 2025.05.29: we're going to add logging capabilities to the validation pipeline
     _logger = logging.getLogger("dirlin.core.validation")
@@ -244,7 +497,7 @@ class BaseValidation:
     _logger.addHandler(tqdm_logger)
 
     @classmethod
-    def _run_validation(cls, df: pd.DataFrame) -> dict[str, _ResultWrapper]:
+    def _run_validation(cls, df: pd.DataFrame) -> dict[str, ResultWrapper]:
         """main function for BaseValidation, and runs the validation functions under the class,
         and returns a dictionary.
 
@@ -257,6 +510,7 @@ class BaseValidation:
         cls.alias_mapping = cls._get_all_alias_mapping_in_class()  # should pull alias from subclass too
 
         # STEP 1: VALIDATE to validate that the class was set up correctly and is usable (GLOBAL)
+        # todo: This portion needs to be updated so that checks are actually working
         _verify = cls._validator(
             df,
             cls._get_function_return_type(),
@@ -266,6 +520,18 @@ class BaseValidation:
         ).check_all()
 
         # STEP 2: INITIALIZE to create all the maps, to prepare for running the checks
+        # todo: this portion needs to be cleaned so that the steps are more clear
+
+        # What are the values that we need?
+        # The function parameter names
+        # The column names on the dataframe
+
+        # What mapping do we need?
+        # Parameter Name: Column Name
+        # Function: Parameter
+
+        # If we have a list of functions, we can tie arguments based on position and kwargs
+
         function_name_to_args_mapping = cls._map_function_to_args(df)  # gives me the func_name and (param and arg) tup
         """function used to pull the check functions, which includes the name, params, and args.
         This creates associations between the checks we have with the report columns we want to use as arguments.
@@ -297,62 +563,6 @@ class BaseValidation:
         )
         return results
 
-    def run_summary(self, df: pd.DataFrame, group_name: str | None = None) -> pd.DataFrame:
-        """creates a basic summary dataframe with the pass / fail for each check.
-
-        Columns:
-            - Check Function Name: name of the function used for the validation
-            - Total Records Validated: the number of records that were validated in total
-            - Total Records Passed: the number of records that successfully passed the validation
-            - Total Records Failed: the number of records that failed the validation
-        """
-        results = self._run_validation(df)
-        # todo this function and run_error_log should both be under the same class Result
-        # this will allow you to do result.run_summary or result.run_validation, result.error_log
-
-        # Summary without the validation_name
-        if group_name is None:
-            summary = {
-                check_name: {
-                    "Check Function Name": r.function_name,
-                    "Check Description": r.function_description,
-                    "Total Records Validated": r.result.count(),
-                    "Total Records Passed": r.result.sum(),
-                    "Total Records Failed": len(r.result) - r.result.sum(),
-                } for check_name, r in results.items()
-            }
-        else:
-            summary = {
-                check_name: {
-                    "Group": group_name,
-                    "Check Function Name": r.function_name,
-                    "Check Description": r.function_description,
-                    "Total Records Validated": r.result.count(),
-                    "Total Records Passed": r.result.sum(),
-                    "Total Records Failed": len(r.result) - r.result.sum(),
-                } for check_name, r in results.items()
-            }
-        result = pd.DataFrame(summary).T.reset_index().sort_values("Total Records Failed", ascending=False)
-        self._logger.info(f"Summary dataframe created successfully...")
-        return result
-
-    def run_error_log(self, df: pd.DataFrame, group_name: str | None = None) -> pd.DataFrame:
-        """gives you a Dataframe with the records that failed the validation
-        """
-        results = self._run_validation(df)
-
-        results_filter = []
-        for check_name, r in results.items():
-            temp_df = df[~r.result].copy()
-            temp_df["Check"] = r.function_name
-            if group_name is not None:
-                temp_df["Group"] = group_name
-            results_filter.append(temp_df)
-
-        _df_results = pd.concat(results_filter, ignore_index=True)
-        self._logger.info(f"Error Log dataframe created successfully...")
-        return _df_results
-
     @classmethod
     def _process_function_with_args(
             cls,
@@ -363,7 +573,7 @@ class BaseValidation:
             function_args: dict[str, list[dict]],
             function_docs: dict[str, str],
 
-    ) -> dict[str, _ResultWrapper]:
+    ) -> dict[str, ResultWrapper]:
         """identifies the type of function we are dealing with, and will run the
         function and its arguments according to its needs. For example, a parameter of type pd.Series will
         run differently than a function running based on float.
@@ -414,7 +624,7 @@ class BaseValidation:
             df: pd.DataFrame,
             args_list: list[dict[str, str]],
             docs: str,
-    ) -> list[_ResultWrapper]:
+    ) -> list[ResultWrapper]:
         """processes the class function assuming every parameter has a pd.Series as the param type, and also
         returns a pd.Series type
 
@@ -439,7 +649,7 @@ class BaseValidation:
         # todo 2025.05.07 make the process_function (x2) more OOP -- the ResultWrapper should be handled on level up
         # list comprehension to get all the results as a list
         deliverable = [
-            _ResultWrapper(
+            ResultWrapper(
                 result=function(**args),
                 parameters_used=name,
                 function_name=function_name,
@@ -457,7 +667,7 @@ class BaseValidation:
             df: pd.DataFrame,
             args_list: list[dict[str, str]],
             docs: str,
-    ) -> list[_ResultWrapper]:
+    ) -> list[ResultWrapper]:
         """processes the class function assuming every parameter has a scalar as the param type, and returns
         a single scalar type as well
 
@@ -488,7 +698,7 @@ class BaseValidation:
             # Step 3: Formatting and Return
             check_name = cls._formatter.convert_dict_to_ref_names(args_pair)
             deliverable.append(
-                _ResultWrapper(
+                ResultWrapper(
                     result=pd.Series(results),
                     parameters_used=check_name,
                     function_name=function_name,
@@ -519,7 +729,7 @@ class BaseValidation:
             for param, fields in param_mapping.items():
                 if param in param_set:  # if this param is part of the check
                     if isinstance(fields, str):
-                        fields = [fields,]
+                        fields = [fields, ]
                     if len(fields) == 1:  # only one field associated with the param. Previously known as static
                         one_to_one[param] = fields[0]
                     elif len(fields) > 1:
@@ -643,79 +853,6 @@ class BaseValidation:
         return return_type_mapping
 
     @classmethod
-    def _get_all_functions_in_class(cls) -> dict:
-        """private helper function used to get a mapping of the check function name and the check function.
-        Helpful when iterating through all the check functions in the class.
-
-        The idea is to iterate through this dictionary in order to run all the defined functions in the
-        super class.
-
-        :return: a dictionary key-value pair of `check_name: check_function`
-        """
-        all_functions = dict()
-        for validation_class in cls.__mro__[:-2]:
-            temp_functions = {
-                check: function for check, function in validation_class.__dict__.items() if inspect.isfunction(function)
-            }
-            all_functions = all_functions | temp_functions
-        return all_functions
-
-    @classmethod
-    def _get_all_function_docstrings(cls, scope: Literal["first", "all"] = "first") -> dict:
-        """helper function used to extract the function docstrings. This will then be used for the final error log
-        to show the description of what each check is doing based on the docstrings.
-
-        :param scope: ['first', 'all'] determines whether to grab the first sentence of the docstring or to capture
-        the entire docstring. Default is 'first'.
-        """
-        try:
-            all_functions_in_class = cls._get_all_functions_in_class()  # has the check_name: check kv pairs
-            docstring_mapping = dict()
-            for check_name, function in all_functions_in_class.items():
-                docstring = inspect.getdoc(function)
-                if not docstring:
-                    docstring = f"No description for {check_name}."
-                    docstring_mapping[check_name] = docstring
-                    continue
-                # Now assuming we have a docstring, we'll go through the scope param
-                if scope == "all":
-                    docstring_mapping[check_name] = docstring  # just send out what we have
-                    continue
-                elif scope == "first":
-                    # matches for any (.), (!), (?) and or a new line
-                    first = re.match(r"(.*?[.!?])(?:\s|$)|([^\n*]*)", docstring, re.DOTALL)
-                    docstring_mapping[check_name] = (first.group(1) or first.group(2)).strip() if first else docstring
-        except Exception as exc:
-            raise exc
-
-        return docstring_mapping
-
-    @classmethod
-    def _map_param_to_alias(cls) -> dict:
-        """private helper function used to flatten the `get_function_param()` dictionary
-        and return a dictionary of all parameters in the class. Helps to map columns to
-        a parameter that's in the class
-
-        This function flattens out all the parameters used in the super object, meaning, each
-        parameter from all the functions are pulled into one dictionary.
-
-        This will likely be used to tie out the parameters to different columns. Includes alias mapping.
-
-        :return: a dictionary with a key-value pair of `parameter: list[column] | None` for all parameters in the class,
-        taking into account all the functions in the class
-        """
-        all_params = {}
-        for check_name, params in cls._get_function_param_and_type().items():
-            for param in params:
-                if param not in all_params:  # don't want to overwrite previous param
-                    all_params[param] = None
-                    # can delete if it's adding a layer of dependency we don't want
-                    if cls.alias_mapping is not None:
-                        if param in cls.alias_mapping:  # adding the user defined param-column pairing
-                            all_params[param] = cls.alias_mapping[param]
-        return all_params
-
-    @classmethod
     def _get_all_alias_mapping_in_class(cls) -> dict:
         """private helper function used to get the alias mapping from all previous subclasses without
         overwriting previous values.
@@ -745,3 +882,10 @@ class BaseValidation:
                         overide_param[param] = col
                 all_alias_mapping = all_alias_mapping | overide_param
         return all_alias_mapping
+
+
+################################
+# THIRD ITERATION
+################################
+
+
