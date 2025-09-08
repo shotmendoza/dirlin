@@ -87,6 +87,17 @@ class Pipeline:
         """Read-only property that holds all the checks currently being run by the Pipeline."""
         return self._checks
 
+    @classmethod
+    def run_subclass(cls):
+        """runs the checks that were assigned for all objects that have inherited from the Pipeline baseclass"""
+        result_mapping = dict()
+        for subclass in cls._register:
+            try:
+                result_mapping[subclass.__name__] = subclass().run()
+            except Exception as exc:
+                raise exc
+        return result_mapping
+
     def _initialize_functions(self) -> None:
         """gets all functions defined by the user in the subclass. The list of functions then get split into those
         that are factories for the reports we are checking, and the checks that are being used when the pipeline
@@ -248,13 +259,3 @@ class Pipeline:
         # We can do this because we added __add__ that allows us to combine Result objects
         self.results = managers[0]
         return managers[0]
-
-    def run_subclass(self):
-        """runs the checks that were assigned for all objects that have inherited from the Pipeline baseclass"""
-        result_mapping = dict()
-        for subclass in self._register:
-            try:
-                result_mapping[subclass.__name__] = subclass.run()
-            except Exception as exc:
-                raise exc
-        return result_mapping

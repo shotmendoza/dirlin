@@ -68,5 +68,5 @@ def test_running_pipeline():
 
 def test_subclass_pipeline():
     foo = TestFooBar()
-    print(Pipeline._register)
+    Pipeline.run_subclass()
 
