@@ -127,6 +127,15 @@ class Pipeline:
                 except TypeError as TE:
                     print(f"Running function {fn_obj}")
                     raise TE
+                except ValueError as VE:
+                    # (!) WE COULD SAVE THESE ERRORS SOMEWHERE FOR VISIBILITY
+                    print(f"Running function {fn_obj}: {VE}")
+                    continue   # don't want to add it as a datasource if it errors out
+                except FileNotFoundError as FNF:
+                    print(f"Running function {fn_obj}: {FNF}")
+                    continue  # not adding in this case either
+                except Exception as E:
+                    raise E
                 data_sources.append(temp_data)
                 continue
             # (3) Getting the Checks => since we're assuming non-pd.DataFrame is a check
