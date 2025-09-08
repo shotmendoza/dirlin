@@ -33,7 +33,8 @@ class TestFooBar(Pipeline):
     _fn_factory = example_df_factory
     _fn_factory_2 = df_foo_factory
 
-    # TODO [2025.09.05] Should be able to handle a pd.Dataframe attribute as DataSource
+    # data source properties
+    _standard_ds = DataSource("basic_test", example_df)
 
 
 def test_define_pipeline_object():
@@ -62,7 +63,5 @@ def test_running_pipeline():
     print(results.as_dataframe())
     print(results.as_dataframe(dtype="dict"))
     print(results.as_dataframe(dtype="message"))
+    print(results.as_dataframe(dtype="summary"))
 
-
-def test_define_data_source():
-    data = DataSource("basic_test", example_df)

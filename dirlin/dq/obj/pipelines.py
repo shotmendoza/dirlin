@@ -2,6 +2,7 @@ import inspect
 from typing import Collection
 
 import pandas as pd
+from pandas import DataFrame
 
 from dirlin.dq.obj.data_quality import FuncObj, DataSource, InterfaceCheckObj
 
@@ -70,6 +71,7 @@ class Pipeline:
         # === INITIALIZING THE OBJECTS WE NEED ===
         self._initialize_functions()  # => initializes the DataSource and FuncObj for the checks
         self._initialize_aliases()  # => initializes the alias_mapping for global param: column recognition
+        self._initialize_properties()  # => initializes any DataSources listed as properties
 
         # === Initializing the Interfaces ===
         self._manager = InterfaceCheckObj(self.checks, alias_mapping=self.alias_mapping)  # with initial values
@@ -153,6 +155,29 @@ class Pipeline:
                         override_param[param] = col
                 aliases = aliases | override_param
         self.alias_mapping = aliases
+        return None
+
+    # TODO [2025.09.08] add initializing properties so you can grab DataSource types
+    # to go one step further, even grabbing dataframes
+    def _initialize_properties(self) -> None:
+        """goes down the inheritance chain and pulls the properties from each subclass."""
+        _data_sources = list()
+        for s_class in inspect.getmro(self.__class__)[:-1]:
+            # (!) currently only looking for DataSources or DataFrames to turn into data sources
+            temp_data_source = [
+                DataSource(field, data) if isinstance(data, DataFrame)
+                else data
+                for field, data in s_class.__dict__.items()
+                if isinstance(data, DataSource)
+            ]
+            _data_sources.extend(temp_data_source)
+        for d in _data_sources:
+            if self._data_sources is None:
+                self._data_sources = d
+                return None
+            elif isinstance(self._data_sources, Collection) and isinstance(self._data_sources, list):
+                if d not in self._data_sources:
+                    self._data_sources.append(d)
         return None
 
     ####################
