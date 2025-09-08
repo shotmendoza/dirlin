@@ -1,10 +1,9 @@
 import inspect
 from typing import Collection
 
-import pandas as pd
 from pandas import DataFrame
 
-from dirlin.dq.core import FuncObj, DataSource, InterfaceCheckObj
+from dirlin.dq.core import FuncObj, DataSource, InterfaceCheckObj, ResultWrapper
 
 
 # [2025.08.29] I AM CURRENTLY HERE. JUST COMPLETED WIRING OUT THE CLASSES.
@@ -21,7 +20,7 @@ class Pipeline:
         1. `alias_mapping` to tie out the columns and parameters
         2. `reports` to tie out the dataframes we want to run through the checks
     """
-    register: list = []
+    _register: list = []
 
     alias_mapping: dict[str, Collection | str] | None = dict()
     """user defined mapping, that ties the column names in the data (report) to the parameter names in the check
@@ -76,7 +75,7 @@ class Pipeline:
 
         # confirm subclasses have alias_map defined
         subclass_defined_properties = cls.__dict__.keys()
-        Pipeline.register.append(cls)
+        Pipeline._register.append(cls)
 
     @property
     def data_sources(self) -> Collection[DataSource]:
@@ -109,7 +108,7 @@ class Pipeline:
             self._checks = list()
         for fn_obj in all_functions:
             # (2) Getting DataSource Factories
-            if fn_obj.return_type_fn == pd.DataFrame:
+            if fn_obj.return_type_fn == DataFrame:
                 try:
                     _args = fn_obj.signatures.bind_partial()
                     _args.apply_defaults()
@@ -177,7 +176,7 @@ class Pipeline:
     def load_dataframe(
             self,
             name: str,
-            data: pd.DataFrame
+            data: DataFrame
     ) -> None:
         """loads the DataSource to the Pipeline for use with the validation, using a pandas Dataframe and name
         """
@@ -229,8 +228,8 @@ class Pipeline:
                 self._data_sources.append(data_source)
         return None
 
-    def run(self):
-        """runs the checks that was assigned to this class as a property, and applies the checks to the report.
+    def run(self) -> ResultWrapper:
+        """runs the checks that was assigned to this specific instance, and applies the checks to the report.
         Each report will generate a Result object, that can later be used as an Error Log or Error Summary so that
         the end user can apply further actions to errors.
         """
@@ -249,3 +248,13 @@ class Pipeline:
         # We can do this because we added __add__ that allows us to combine Result objects
         self.results = managers[0]
         return managers[0]
+
+    def run_subclass(self):
+        """runs the checks that were assigned for all objects that have inherited from the Pipeline baseclass"""
+        result_mapping = dict()
+        for subclass in self._register:
+            try:
+                result_mapping[subclass.__name__] = subclass.run()
+            except Exception as exc:
+                raise exc
+        return result_mapping

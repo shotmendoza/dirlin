@@ -2,8 +2,8 @@ from typing import Collection
 
 import pandas as pd
 
-from dirlin.dq.obj.pipelines import Pipeline
-from dirlin.dq.obj.data_quality import DataSource, ResultWrapper
+from dirlin.dq.core import DataSource, ResultWrapper
+from dirlin.dq.pipelines import Pipeline
 from test.helpers import (
     matches_df_columns,
     matches_df_with_aliases_scalar,
@@ -64,4 +64,9 @@ def test_running_pipeline():
     print(results.as_dataframe(dtype="dict"))
     print(results.as_dataframe(dtype="message"))
     print(results.as_dataframe(dtype="summary"))
+
+
+def test_subclass_pipeline():
+    foo = TestFooBar()
+    print(Pipeline._register)
 

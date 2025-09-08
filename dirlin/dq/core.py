@@ -562,7 +562,6 @@ class ResultWrapper:
         final = final.merge(result_df, how="left", left_on="Label", right_index=True)
         final[["Total", "Passed", "Failed"]] = final[["Total", "Passed", "Failed"]].fillna(0).astype(int)
         final = final.set_index("Label")
-        print(final.columns)
         return final
 
 # class _Deliverable:
