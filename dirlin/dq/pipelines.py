@@ -4,7 +4,7 @@ from typing import Collection
 import pandas as pd
 from pandas import DataFrame
 
-from dirlin.dq.obj.data_quality import FuncObj, DataSource, InterfaceCheckObj
+from dirlin.dq.core import FuncObj, DataSource, InterfaceCheckObj
 
 
 # [2025.08.29] I AM CURRENTLY HERE. JUST COMPLETED WIRING OUT THE CLASSES.
@@ -13,15 +13,6 @@ from dirlin.dq.obj.data_quality import FuncObj, DataSource, InterfaceCheckObj
 # FuncObj: This is a object representing the function, and handles everything related to functions
 # InterfaceCheckObj: Object responsible for managing the DataSource, Function, Results, AliasMap
 # AliasMap: Handles the creation of AliasRecords
-
-# [2025.08.29] I NEED TO COMPLETE THE FOLLOWING
-# (/) test to make sure all the objects and new Validation is working properly
-# (/) finish out the Results object, and make sure we are able to customize the structure of the results
-# (3) test it on a bigger data set
-# (/) write out the interface portions
-# (/) Interface (A) need to notify any skipped checks (/) return the Results of the Validation
-# (/) Confirm that you can add the ResultsWrapper
-
 
 class Pipeline:
     """Handles running checks on a class level

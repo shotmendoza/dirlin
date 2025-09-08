@@ -1,7 +1,7 @@
 import pandas as pd
 
-from dirlin.dq.obj.pipelines import Pipeline
-from dirlin.dq.obj.data_quality import DataSource, InterfaceCheckObj, FuncObj
+from dirlin.dq.pipelines import Pipeline
+from dirlin.dq.core import DataSource
 
 
 def test_movement_of_df():

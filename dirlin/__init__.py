@@ -14,10 +14,6 @@ from dirlin.folder import (
     Path,  # pathlib.Path,
 )
 
-from dirlin.validation import (
-    BaseValidation  # used for Validation pipeline
-)
-
 import pandas  # using the Pandas library
 import numpy  # using the numpy lib
 
@@ -29,7 +25,6 @@ __all__ = [
     "Folder",
     "Directory",
     "Path",
-    "BaseValidation",
     "pandas",
     "numpy"
 ]
