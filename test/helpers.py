@@ -28,6 +28,16 @@ def series_fn(fle: pd.Series, foo: pd.Series) -> pd.Series:
     return pd.Series([f"{fl} what {fo}" for fl, fo in zip(fle, foo)])
 
 
+def check_scalar_bool(foo: int) -> bool:
+    """checking for a scalar bool function"""
+    return foo > 3
+
+
+def check_series_bool(foo: pd.Series) -> pd.Series:
+    """check for pd.Series bool function"""
+    return pd.Series(foo > 3)
+
+
 example_df = pd.DataFrame.from_dict(
     {
         "Idx": [1, 2, 3, 4, 5],
@@ -37,7 +47,7 @@ example_df = pd.DataFrame.from_dict(
         "All That": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
         "foof": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
         "fle": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
-        "foo": ["Foo 1", "Foo 2", "Foo 3", "Foo 4", "Foo 5"],
+        "foo": [1, 2, 3, 4, 5],
     }
 )
 

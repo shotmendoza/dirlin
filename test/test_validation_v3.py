@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Collection
 
 import pandas as pd
@@ -11,7 +12,10 @@ from test.helpers import (
     scalar_fn,
     series_fn,
     example_df,
-    example_df_factory, df_foo_factory
+    example_df_factory,
+    df_foo_factory,
+    check_series_bool,
+    check_scalar_bool
 )
 
 
@@ -19,7 +23,9 @@ class TestFooBar(Pipeline):
     alias_mapping = {
         "record": ["Recordo", "Recarda"],
         "that": ["After That", "All That"],
-        "flow": "fle"
+        "flow": "fle",
+        "fee": "foo",
+        "row": "foof",
     }
 
     # FUNCTIONS FOR CHECKS AND VALIDATIONS
@@ -28,6 +34,10 @@ class TestFooBar(Pipeline):
     _matches_df_with_aliases_series = matches_df_with_aliases_series
     _scalar_fn = scalar_fn
     _series_fn = series_fn
+
+    # BOOL FUNCTIONS
+    _check_series_bool = check_series_bool
+    _check_scalar_bool = check_scalar_bool
 
     # FUNCTION FOR DATASOURCE FACTORY, THAT THE NEW PIPELINE SUPPORTS
     _fn_factory = example_df_factory
@@ -60,10 +70,15 @@ def test_running_pipeline():
     assert isinstance(results.as_dataframe(dtype="dict"), pd.DataFrame)
     assert isinstance(results.as_dataframe(dtype="message"), pd.DataFrame)
 
-    print(results.as_dataframe())
-    print(results.as_dataframe(dtype="dict"))
-    print(results.as_dataframe(dtype="message"))
-    print(results.as_dataframe(dtype="summary"))
+    # print(results.as_dataframe())
+    # print(results.as_dataframe(dtype="dict"))
+    # print(results.as_dataframe(dtype="message"))
+    # print(results.as_dataframe(dtype="summary"))
+
+    # Current issues
+    # Runs x2 times
+    # missing the scalar bool functions
+    results.as_dataframe(dtype="summary").to_csv(f"Test - {date.today()}.csv")
 
 
 def test_subclass_pipeline():
