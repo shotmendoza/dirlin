@@ -266,5 +266,13 @@ class Pipeline:
         managers = [self._manager.build(source) for source in updated_source]
 
         # We can do this because we added __add__ that allows us to combine Result objects
-        self.results = managers[0]
-        return managers[0]
+        result = None
+        for manager in managers:
+            if result is None:
+                result = manager
+                continue
+            result += manager
+        if result is None:
+            return ResultWrapper()
+        self.results = result
+        return self.results

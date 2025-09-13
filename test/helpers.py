@@ -38,6 +38,36 @@ def check_series_bool(foo: pd.Series) -> pd.Series:
     return pd.Series(foo > 3)
 
 
+def check_scalar_bool_parent(foo: int) -> bool:
+    """checking for a scalar bool function"""
+    return foo > 3
+
+
+def check_series_bool_parent(foo: pd.Series) -> pd.Series:
+    """check for pd.Series bool function"""
+    return pd.Series(foo > 3)
+
+
+def check_scalar_bool_child(foo: int) -> bool:
+    """checking for a scalar bool function (child)"""
+    return foo > 3
+
+
+def check_series_bool_child(foo: pd.Series) -> pd.Series:
+    """check for pd.Series bool function (child)"""
+    return pd.Series(foo > 3)
+
+
+def check_scalar_bool_shared(shared: int) -> bool:
+    """checking for a scalar bool function (child)"""
+    return shared > 30
+
+
+def check_series_bool_shared(shared: pd.Series) -> pd.Series:
+    """check for pd.Series bool function (child)"""
+    return pd.Series(shared > 30)
+
+
 example_df = pd.DataFrame.from_dict(
     {
         "Idx": [1, 2, 3, 4, 5],
@@ -51,6 +81,32 @@ example_df = pd.DataFrame.from_dict(
     }
 )
 
+parent_df = pd.DataFrame.from_dict(
+    {
+        "Idx": [1, 2, 3, 4, 5],
+        "shared": [10, 20, 30, 40, 50],
+        "Recarda": ["Row 1a", "Row 2a", "Row 3a", "Row 4a", "Row 5a"],
+        "After That": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "All That": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "foof": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "fle": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "foo": [1, 2, 3, 4, 5],
+    }
+)
+
+child_df = pd.DataFrame.from_dict(
+    {
+        "Idx": [1, 2, 3, 4, 5],
+        "shared": [10, 20, 30, 40, 50],
+        "Recarda": ["Row 1a", "Row 2a", "Row 3a", "Row 4a", "Row 5a"],
+        "After That": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "All That": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "foof": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "fle": ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"],
+        "foobar": [1, 2, 3, 4, 5],
+    }
+)
+
 
 def example_df_factory() -> pd.DataFrame:
     return example_df
@@ -58,3 +114,11 @@ def example_df_factory() -> pd.DataFrame:
 
 def df_foo_factory() -> pd.DataFrame:
     return example_df
+
+
+def df_child_factory() -> pd.DataFrame:
+    return child_df
+
+
+def df_parent_factory() -> pd.DataFrame:
+    return parent_df

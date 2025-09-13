@@ -34,13 +34,13 @@ class AliasMap:
     """
     mapping: dict[str, str] | dict[str, Collection]
 
-    def get_relevant(self, keep: Collection) -> dict[str, Any]:
+    def get_relevant(self, keep: Collection, columns: Collection) -> dict[str, Any]:
         """returns parameters that match with the values in the Collectable if it's in the alias_mapping.
         Used by Interface when wanting to only use relevant parameter keys when building records.
         """
         return {
             parameter: alias for parameter, alias in self.mapping.items()
-            if parameter in keep
+            if parameter in keep and alias in columns
         }
 
     def build_alias_records(
@@ -73,7 +73,7 @@ class AliasMap:
         records = {}
 
         # [1.1] get the relevant parameters from the user input
-        records = self.get_relevant(keep=parameters)
+        records = self.get_relevant(keep=parameters, columns=columns)
 
         # [1.2] get the relevant parameters from the columns
         for param in parameters:
@@ -92,8 +92,9 @@ class AliasMap:
         _missing_param_set = [param for param in parameters if param not in records]
         if _missing_param_set:
             raise KeyError(f"parameter `{_missing_param_set}` is not in the alias_records or DataSource")
-
         # [2025.09.03] in the future could add a log here for any that were skipped
+
+        # [2025.09.13] we need one more step of removing any parameters not in the current DataSource
 
         # [1.4] Grab the One-to-One and separate out the keys args[0] because 'fee': ['foo']
         one_to_one_records = {p: args[0] for p, args in records.items() if len(args) == 1}  # p: c
@@ -315,7 +316,9 @@ class ResultWrapper:
         for k, v in other.skipped_fn_names_label_key.items():
             self.skipped_fn_names_label_key[k].extend(v)
         for k, v in other.label_skipped_reason.items():
-            self.label_skipped_reason[k].extend(v)
+            if k in self.label_to_ds_relation:
+                if v not in self.label_skipped_reason[k]:  # prevents duplicate error messages
+                    self.label_skipped_reason[k].extend(v)
         # [idx]
         for k, v in other.records_affected.items():
             self.records_affected[k].extend(v)  # dict {123: [fn1]} + {123: [fn2]}
@@ -563,8 +566,9 @@ class ResultWrapper:
         label_df.columns = ["Skipped", "Message", "Checked", "Skip Reason", "Check", "Source"]
         bool_col = ["Skipped", "Message", "Checked"]
         label_df[bool_col] = label_df[bool_col].fillna(0).astype(bool)
+        label_df["Skip Reason"] = label_df["Skip Reason"].fillna("Ran")  # so that explode doesn't error out
         label_df["Skip Reason"] = label_df["Skip Reason"].explode().astype(str)
-        label_df["Skip Reason"] = label_df["Skip Reason"].str.replace("\\", "").fillna("Ran")
+        label_df["Skip Reason"] = label_df["Skip Reason"].str.replace("\\", "")
         label_df.index.name = "Label"
 
         # [1.2] work on the next unit, records. These will be blank if all checks were skipped (ie message, skip)
