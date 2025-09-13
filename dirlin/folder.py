@@ -16,63 +16,6 @@ from tqdm import tqdm
 from dirlin.core.api import Document, DirlinFormatter, TqdmLoggingHandler
 
 
-class Directory:
-    def __init__(self, path: str | Path | None = None, initialize_posix_path: bool = True):
-        """object used for directory level data wrangling. Can think of directories as a collection
-        of Folders, where the Folder object handles different functionality for processing, while the
-        Directory object keeps them organized.
-
-        For macOS, we have extra fields we can use - DOWNLOADS, DESKTOP, DOCUMENTS, DEVELOPER
-        if available.
-
-        ...
-
-        Attributes:
-            - path: the directory path the folder is set to. If left as None, the path will be set to the downloads
-            folder for macOS. Windows currently not supported.
-            - initialize_posix_path: assumes the script is on a macOS directory
-
-        :param path: initializes a Folder.folder FolderPath object
-        :param initialize_posix_path: initializes default macOS folders
-        """
-        # [Part 1] setting up constants
-        _curr_folder_directory = Path.cwd().home()
-
-        # [Part 2] Loggers
-        self.logger = logging.getLogger("dirlin.core.directory")
-        self.logger.setLevel(logging.INFO)
-        _tqdm_handler = TqdmLoggingHandler()
-        self.logger.addHandler(_tqdm_handler)
-
-        # [Part 3] setup placeholder folders
-        self.DOWNLOADS: Folder | None = None
-        self.DESKTOP: Folder | None = None
-        self.DOCUMENTS: Folder | None = None
-        self.DEVELOPER: Folder | None = None
-
-        # adding the macOS only directory paths, so we don't have to define these in the future and they are included
-        if initialize_posix_path is True:
-            if isinstance(_curr_folder_directory, PosixPath):
-                self.logger.info(f"Adding macOS specific default directories...")
-                self.DOWNLOADS = Folder(_curr_folder_directory / "Downloads")
-                self.DESKTOP = Folder(_curr_folder_directory / "Desktop")
-                self.DOCUMENTS = Folder(_curr_folder_directory / "Documents")
-
-                try:
-                    self.DEVELOPER = Folder(_curr_folder_directory / "Developer")
-                except AttributeError:
-                    self.logger.warning(f"Developer folder has not been created yet on this mac.")
-
-        if path is None:
-            path = self.DOWNLOADS.path
-
-        self.folder: Folder = Folder(path)
-        """argument given by user pointing to a specific directory"""
-
-    def __truediv__(self, other) -> Path:
-        return self.folder / other
-
-
 class Folder:
     def __init__(self, path: Path | str | None = None):
         """utility object that allows for handling files inside of folders.
@@ -187,7 +130,7 @@ class Folder:
 
         # [Part 0]: the happy path using the cached version
         try:
-            # 2025.06.07 caused an error saying None is unscripable, so we can assume if this mask works
+            # 2025.06.07 caused an error saying None is un-scriptable, so we can assume if this mask works
             # that self._cached_get_all_files is not None
             cached_previously_and_same_filename_pattern = filename_pattern == self._cached_get_all_files[0]
         except TypeError:
@@ -390,8 +333,8 @@ class Folder:
 
         # Handling PDFs
         elif file_path.suffix in _image_types:  # pdf
+            from dirlin.pdf import PDFFile
             try:
-                from dirlin.pdf import PDFFile
                 pdf = PDFFile(file_path)
                 df = pdf.to_dataframe(*args, **kwargs)
                 return df
@@ -602,3 +545,65 @@ class Folder:
                 if not f.name.startswith("~") and not f.name.startswith(".")
             ]
         return files
+
+
+class Directory:
+    def __init__(self, path: str | Path | None = None, initialize_posix_path: bool = True):
+        """object used for directory level data wrangling. Can think of directories as a collection
+        of Folders, where the Folder object handles different functionality for processing, while the
+        Directory object keeps them organized.
+
+        For macOS, we have extra fields we can use - DOWNLOADS, DESKTOP, DOCUMENTS, DEVELOPER
+        if available.
+
+        ...
+
+        Attributes:
+            - path: the directory path the folder is set to. If left as None, the path will be set to the downloads
+            folder for macOS. Windows currently not supported.
+            - initialize_posix_path: assumes the script is on a macOS directory
+
+        :param path: initializes a Folder.folder FolderPath object
+        :param initialize_posix_path: initializes default macOS folders
+        """
+        # [Part 1] setting up constants
+        _curr_folder_directory = Path.cwd().home()
+
+        # [Part 2] Loggers
+        self.logger = logging.getLogger("dirlin.core.directory")
+        self.logger.setLevel(logging.INFO)
+        _tqdm_handler = TqdmLoggingHandler()
+        self.logger.addHandler(_tqdm_handler)
+
+        # [Part 3] setup placeholder folders
+        self.DOWNLOADS: Folder | None = None
+        self.DESKTOP: Folder | None = None
+        self.DOCUMENTS: Folder | None = None
+        self.DEVELOPER: Folder | None = None
+
+        # adding the macOS only directory paths, so we don't have to define these in the future and they are included
+        if initialize_posix_path is True:
+            if isinstance(_curr_folder_directory, PosixPath):
+                self.logger.info(f"Adding macOS specific default directories...")
+                self.DOWNLOADS = Folder(_curr_folder_directory / "Downloads")
+                self.DESKTOP = Folder(_curr_folder_directory / "Desktop")
+                self.DOCUMENTS = Folder(_curr_folder_directory / "Documents")
+
+                try:
+                    self.DEVELOPER = Folder(_curr_folder_directory / "Developer")
+                except AttributeError:
+                    self.logger.warning(f"Developer folder has not been created yet on this mac.")
+
+        if path is None:
+            path = self.DOWNLOADS.path
+
+        self.folder: Folder = Folder(path)
+        """argument given by user pointing to a specific directory"""
+
+    def __truediv__(self, other) -> Path:
+        return self.folder / other
+
+    @classmethod
+    def as_folder(cls, path: Path | str) -> Folder:
+        """returns a Pathlib.Path or str object as a Folder object"""
+        return Folder(path)

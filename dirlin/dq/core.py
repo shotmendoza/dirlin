@@ -5,9 +5,9 @@ import re
 from collections.abc import Collection
 from datetime import date, datetime
 from typing import Literal, Callable, Any
+from uuid import UUID, uuid5
 
-import pandas as pd
-from pandas import DataFrame, Series, concat, MultiIndex
+from pandas import DataFrame, Series, concat, MultiIndex, crosstab
 
 
 @dataclass(frozen=True)
@@ -148,11 +148,12 @@ class ResultWrapper:
     def __init__(
             self,
             result: Series = None,
-            label: str | None = None,
+            label: str | UUID | None = None,
             function_name: str | None = None,
             fn_description: str | None = None,
             report_name: str | None = None,
             flag_true: bool = False,
+            skip_reason: str | None = None,
     ):
         """Used as a wrapper for results.
 
@@ -180,6 +181,12 @@ class ResultWrapper:
 
         self.label_counter_message: Counter = Counter()
         """counts any label that was part of message function"""
+
+        self.skipped_fn_names_label_key: dict = defaultdict(list)
+        """Dict for any functions that got skipped with the report as keys"""
+
+        self.label_skipped_reason: dict = defaultdict(list)
+        """Dict for any functions that got skipped with the label as keys"""
 
         ##########################################################
         # Properties - Check | Label LEVEL FIELDS
@@ -251,6 +258,9 @@ class ResultWrapper:
         self.label_to_fn_relation: dict = dict()
         """relational table for mapping label => function keys"""
 
+        self.label_to_ds_relation: dict = dict()
+        """relational table for mapping label => DataSource keys"""
+
         #########################
         # === INIT FUNCTIONS ===
         #########################
@@ -265,7 +275,8 @@ class ResultWrapper:
             report_name=report_name,
             fn_name=function_name,
             fn_description=fn_description,
-            flag_true=flag_true
+            flag_true=flag_true,
+            skip_reason=skip_reason
         )
 
     def __add__(self, other: "ResultWrapper") -> "ResultWrapper":
@@ -300,6 +311,11 @@ class ResultWrapper:
         self.label_counter_message.update(other.label_counter_message)
 
         # === [2] Handling the mappings ===
+        # [label]
+        for k, v in other.skipped_fn_names_label_key.items():
+            self.skipped_fn_names_label_key[k].extend(v)
+        for k, v in other.label_skipped_reason.items():
+            self.label_skipped_reason[k].extend(v)
         # [idx]
         for k, v in other.records_affected.items():
             self.records_affected[k].extend(v)  # dict {123: [fn1]} + {123: [fn2]}
@@ -322,6 +338,9 @@ class ResultWrapper:
             if k not in self.label_to_fn_relation:
                 self.label_to_fn_relation[k] = v
             # keep original value if key exists already
+        for k, v in other.label_to_ds_relation.items():
+            if k not in self.label_to_ds_relation:
+                self.label_to_ds_relation[k] = v
         # === done
         return self
 
@@ -344,6 +363,7 @@ class ResultWrapper:
             fn_name: str | None = None,
             fn_description: str | None = None,
             flag_true: bool = False,
+            skip_reason: str | None = None
     ) -> None:
         """calculates the derived values from the checks. Uses the results as a basis for creating
         these so that the end user can get more details on what happened.
@@ -359,6 +379,7 @@ class ResultWrapper:
         report_name = report_name if report_name is not None else "No Report"
         fn_description = fn_description if fn_description is not None else "Skipped"
         label = label if label is not None else "Skipped Function"
+        skip_reason = skip_reason if skip_reason is not None else "Ran"
 
         # [1.1] Session Trackers, tracking any time `_calculate_results` gets run
         self.fn_ran_in_session.update({fn_name: 1})
@@ -369,8 +390,9 @@ class ResultWrapper:
         if fn_name not in self.fn_desc:
             self.fn_desc[fn_name] = fn_description
 
-        # [1.3] add relationship
+        # [1.3] add relationships
         self.label_to_fn_relation[label] = fn_name
+        self.label_to_ds_relation[label] = report_name
 
         if not result.empty:  # Filled Results, we have data to work with
             if self._is_check:  # ensures pd.Results has boolean values as the results | else treat it like a msg
@@ -410,6 +432,8 @@ class ResultWrapper:
         else:  # Empty Pd.Series, we consider these pure skips
             # [4.1] session tracking for skipped labels
             self.label_counter_skipped.update({label: 1})
+            self.skipped_fn_names_label_key[label].append(fn_name)
+            self.label_skipped_reason[label].append(skip_reason)
 
             # [4.2] Trackers for skipped functions | non-boolean & other fn
             self.skipped_fn_names_data_key[report_name].append(fn_name)  # Skipped, DataSource as key
@@ -526,26 +550,50 @@ class ResultWrapper:
             - Total Records Passed: the number of records that successfully passed the validation
             - Total Records Failed: the number of records that failed the validation
         """
-        # [1.1] work on the smallest unit, labels and create the pd.DataFrame
+        # [1.1] work on the smallest unit, labels, and create the pd.DataFrame
         label_bundle = (
             self.label_counter_skipped,
             self.label_counter_message,
             self.label_counter_checked,
-            self.label_to_fn_relation
+            self.label_skipped_reason,
+            self.label_to_fn_relation,
+            self.label_to_ds_relation
         )
         label_df = DataFrame(label_bundle).T
-        label_df.columns = ["Skipped", "Message", "Checked", "Check"]
+        label_df.columns = ["Skipped", "Message", "Checked", "Skip Reason", "Check", "Source"]
         bool_col = ["Skipped", "Message", "Checked"]
         label_df[bool_col] = label_df[bool_col].fillna(0).astype(bool)
+        label_df["Skip Reason"] = label_df["Skip Reason"].explode().astype(str)
+        label_df["Skip Reason"] = label_df["Skip Reason"].str.replace("\\", "").fillna("Ran")
         label_df.index.name = "Label"
 
-        # [1.2] work on the next unit, records. these will be blank if all checks were skipped (ie message, skip)
+        # [1.2] work on the next unit, records. These will be blank if all checks were skipped (ie message, skip)
         result_bundle = (self.records_total, self.records_passed, self.records_failed)
         result_df = DataFrame(result_bundle).T.fillna(0).astype(int)
         result_df.columns = ["Total", "Passed", "Failed"]
         result_df.index.name = "Label"
 
-        # [1.3] work on the function level unit
+        # [1.3] 2025.09.12. I think we needed one more unit, which is the DataSource level for `Group`.
+        # [DataSource -> Skipped] we need to unwrap the list we have for each column
+        skipped_ds_df = Series(self.skipped_fn_names_data_key).explode()
+        skipped_ds_df = crosstab(skipped_ds_df.index, skipped_ds_df).fillna(0).astype(bool)
+        skipped_ds_df.index.name = "Source"
+        skipped_ds_df.columns.name = None
+        skipped_ds_df = skipped_ds_df.add_prefix("skipped_")
+        # [DataSource -> Standard] more standard that follows the other process
+        ds_bundle = (
+            self.data_ran_in_session,
+            self.data_checked_in_session
+        )
+        ds_df_std = DataFrame(ds_bundle).T
+        ds_df_std.columns = ["Source Used in Session", "Source Checked in Session"]
+        ds_df_std.index.name = "Source"
+        ds_df_std["Source Used in Session"] = ds_df_std["Source Used in Session"].fillna(0).astype(int)
+        ds_df_std["Source Checked in Session"] = ds_df_std["Source Checked in Session"].fillna(0).astype(int)
+        # [DataSource -> Combining the Two]
+        ds_df = skipped_ds_df.merge(ds_df_std, left_index=True, right_index=True, how="left")
+
+        # [1.4] work on the function level unit
         fn_bundle = (self.fn_desc, self.message_counter_fn_name, self.skipped_fn_counter)
         fn_df = DataFrame(fn_bundle).T
         fn_df.columns = ["Description", "Message Count", "Function Skipped"]
@@ -553,12 +601,13 @@ class ResultWrapper:
         fn_df[number_col] = fn_df[number_col].fillna(0).astype(int)
         fn_df["Description"] = fn_df["Description"].fillna("No description found").astype(str)
 
-        # [1.4] Join the label level and function level df together
+        # [1.5] Join the label level and function level df together
         fn_df.index.name = "Check"
         label_df = label_df.reset_index()
         final = label_df.merge(fn_df, how="left", left_on="Check", right_index=True)
+        final = final.merge(ds_df, how="left", left_on="Source", right_index=True)
 
-        # [1.5] Join the Label and Results level together
+        # [1.6] Join the Label and Results level together
         final = final.merge(result_df, how="left", left_on="Label", right_index=True)
         final[["Total", "Passed", "Failed"]] = final[["Total", "Passed", "Failed"]].fillna(0).astype(int)
         final = final.set_index("Label")
@@ -752,22 +801,25 @@ class FuncObj:
         converted_records = [
             data.data.copy()[record.values()].rename(columns=rm).to_dict("records")
             for record, rm in zip(records, rename_map)
-        ]
-        record_labels = [f"{data.name}_{str('_'.join(k for k in r.values()))}" for r in records]
+        ][0]  # this is becoming a nested list
+        record_labels = [f"{data.name}_{self.name}_{str('_'.join(k for k in r.values()))}" for r in records]
 
         results = None
-        for record, label in zip(converted_records, record_labels):
-            bound_args = [self.signatures.bind_partial(**r) for r in record]  # bind the args
-            [r.apply_defaults() for r in bound_args]  # not sure if this is clean or works
-            ran_args = [self.fn(*args.args, **args.kwargs) for args in bound_args]
-            curr = Series(ran_args)
+        curr = list()
+        for record in converted_records:
+            bound_args = self.signatures.bind_partial(**record)  # bind the args
+            bound_args.apply_defaults()  # not sure if this is clean or works
+            ran_args = self.fn(*bound_args.args, **bound_args.kwargs)
+            curr.append(ran_args)
 
+        for r in record_labels:
             results = self._handle_result_wrapper(
-                new_result=curr,
-                label=label,
+                new_result=Series(curr),
+                label=r,
                 function_name=self.name,
                 function_description=self.doc,
                 report_name=data.name,
+                old_result=results
             )
         return results
 
@@ -775,13 +827,15 @@ class FuncObj:
     def _handle_result_wrapper(
             cls,
             new_result: Series | None,
-            label: str,
+            label: str | UUID,
             function_name: str,
             function_description: str,
             report_name: str,
+            old_result: ResultWrapper | None = None,
     ) -> ResultWrapper:
         """handles the ResultWrapper from the function.
         """
+        label = cls._generate_uuid(label)
         temp = ResultWrapper(
             result=new_result,
             label=label,
@@ -789,7 +843,17 @@ class FuncObj:
             fn_description=function_description,
             report_name=report_name
         )
-        return temp
+
+        if old_result is None:
+            return temp
+        return old_result + temp
+
+    @classmethod
+    def _generate_uuid(cls, label: str) -> UUID:
+        """generates the uuid based on the given label"""
+        UUID_FORMAT = UUID("12345678-1234-1234-1234-1234567890ab")
+        code = uuid5(UUID_FORMAT, label)
+        return code
 
 
 @dataclass(init=False)
@@ -880,6 +944,7 @@ class InterfaceCheckObj:
                     label=skipped_label,
                     fn_description=fn.doc,
                     report_name=data.name,
+                    skip_reason=KE.args[0],
                 )
             except Exception as E:
                 raise E
