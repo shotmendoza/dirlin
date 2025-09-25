@@ -1,34 +1,34 @@
 [project]
 name = "Dirlin"
-version = "0.5.1"
+version = "0.5.2"
 description = "Handy functions for local files"
-authors = [{name = "mendozasho"}]
 readme = "README.md"
-requires-python = ">=3.10"
-
+authors = [
+    { name = "mendozasho", email = "shomendoza@gmail.com" }
+]
+requires-python = ">=3.11"
 dependencies = [
-    "openpyxl",
-    "xlrd==2.0.1",
-    "pyxlsb==1.0.10",
-    "pandas==2.0.2",
-    "chardet==5.2.0",
-    "numpy<2.0.0",
-    "tqdm~=4.67.1",
+    "chardet>=5.2.0",
+    "pandas>=2.0.2",
+    "pyxlsb>=1.0.10",
+    "tqdm>=4.67.1",
+    "xlrd>=2.0.2",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "setuptools"
-]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-pdf = [
-    "pdfplumber==0.11.6",
-    "pypdf==5.6.0",
-    "pypdf2"
-]
-
+[dependency-groups]
 db = [
-    "sqlalchemy",
-    "pydantic",
+    "pydantic>=2.11.9",
+    "sqlalchemy>=2.0.43",
+]
+dev = [
+    "pytest>=8.4.2",
+]
+pdf = [
+    "pdfplumber>=0.11.7",
+    "pypdf>=6.1.0",
+    "pypdf2>=3.0.1",
 ]
