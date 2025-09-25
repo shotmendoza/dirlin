@@ -2,7 +2,7 @@
 
 __version__ = "0.4.0"
 
-from dirlin.core.api import (
+from src.dirlin.core.api import (
     DirlinFormatter,  # formatting functions
     Document,  # special dataframe wrapper
     TqdmLoggingHandler  # logger
