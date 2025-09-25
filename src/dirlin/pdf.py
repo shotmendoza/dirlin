@@ -9,7 +9,7 @@ from pdfplumber.display import PageImage
 from pdfplumber.page import Page
 from pypdf import PdfReader, PdfWriter, PageObject
 
-from src.dirlin.core.api import DirlinFormatter
+from dirlin.core.api import DirlinFormatter
 
 # Parse PDF
 # Read with PDF Plumber fn(path: Path) => Page

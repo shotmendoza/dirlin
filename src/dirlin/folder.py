@@ -13,7 +13,7 @@ import pandas as pd
 import chardet
 from tqdm import tqdm
 
-from src.dirlin.core.api import Document, DirlinFormatter, TqdmLoggingHandler
+from dirlin.core.api import Document, DirlinFormatter, TqdmLoggingHandler
 
 
 class Folder:

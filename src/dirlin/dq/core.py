@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import inspect
 import re
 from collections.abc import Collection
-from datetime import date, datetime
+from datetime import datetime
 from typing import Literal, Callable, Any
 from uuid import UUID, uuid5
 
