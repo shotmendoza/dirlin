@@ -9,10 +9,22 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "chardet>=5.2.0",
+    "openpyxl>=3.1.5",
     "pandas>=2.0.2",
     "pyxlsb>=1.0.10",
     "tqdm>=4.67.1",
     "xlrd>=2.0.2",
+]
+
+[project.optional-dependencies]
+pdf = [
+    "pdfplumber>=0.11.7",
+    "pypdf>=6.1.0",
+    "pypdf2>=3.0.1",
+]
+db = [
+    "pydantic>=2.11.9",
+    "sqlalchemy>=2.0.43",
 ]
 
 [build-system]
@@ -20,15 +32,6 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-db = [
-    "pydantic>=2.11.9",
-    "sqlalchemy>=2.0.43",
-]
 dev = [
     "pytest>=8.4.2",
-]
-pdf = [
-    "pdfplumber>=0.11.7",
-    "pypdf>=6.1.0",
-    "pypdf2>=3.0.1",
 ]
