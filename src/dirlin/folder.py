@@ -52,7 +52,7 @@ class Directory:
         self.DEVELOPER: Folder | None = None
 
         # adding the macOS only directory paths, so we don't have to define these in the future and they are included
-        if initialize_posix_path is True:
+        if initialize_posix_path:
             if isinstance(_curr_folder_directory, PosixPath):
                 self.logger.info(f"Adding macOS specific default directories...")
                 self.DOWNLOADS = Folder(_curr_folder_directory / "Downloads")
@@ -117,7 +117,7 @@ class Folder:
         """used for parsing and formatting the user args"""
 
         # [2.2] cache utility property for storing the results of get_all_files
-        self._cached_get_all_files: (str, list[Path]) | None = None
+        self._cached_get_all_files: str | list[Path] | None = None
         """placeholder for storing the most recently run get_all_files results. (filename_pattern, list[Path])"""
 
         # [2.3] Logging utility class and setting up logging
@@ -345,7 +345,7 @@ class Folder:
                 if "sheet_name" not in kwargs.keys():
                     kwargs["sheet_name"] = 0
                 df = pd.read_excel(file_path, *args, **kwargs)
-                if add_source is True:
+                if add_source:
                     df["From"] = file_path.stem
                 return df
             except ValueError as ve:
@@ -361,7 +361,7 @@ class Folder:
         elif file_path.suffix in _text_types:
             try:
                 df = pd.read_csv(file_path, *args, **kwargs)
-                if add_source is True:
+                if add_source:
                     df["From"] = file_path.stem
                 return df
             except pandas.errors.ParserError:
@@ -372,27 +372,27 @@ class Folder:
                 with open(file_path, "rb") as f:
                     file_path_encoding = chardet.detect(f.read())
                     df = pd.read_csv(file_path, encoding=file_path_encoding['encoding'], *args, **kwargs)
-                    if add_source is True:
+                    if add_source:
                         df["From"] = file_path.stem
                     return df
             except pd.errors.DtypeWarning as dt_warning:
                 self.logger.warning(f"{dt_warning}: reprocessing with lower_memory arg...")
                 df = pd.read_csv(file_path, low_memory=False, *args, **kwargs)
-                if add_source is True:
+                if add_source:
                     df["From"] = file_path.stem
                 return df
 
         # Handling JSON files
         elif file_path.suffix == ".json":
             df = pd.read_json(file_path, *args, **kwargs)
-            if add_source is True:
+            if add_source:
                 df["From"] = file_path.stem
             return df
 
         # Handling PDFs
         elif file_path.suffix in _image_types:  # pdf
+            from dirlin.pdf import PDFFile
             try:
-                from dirlin.pdf import PDFFile
                 pdf = PDFFile(file_path)
                 df = pdf.to_dataframe(*args, **kwargs)
                 return df
@@ -405,7 +405,7 @@ class Folder:
             url = urlparse(str(file_path))
             if url.netloc == "docs.google.com" and "format=csv" in url.query.split("&"):
                 df = pd.read_csv(file_path, *args, **kwargs)
-                if add_source is True:
+                if add_source:
                     df["From"] = file_path.stem
                 return df
         except HTTPError as e:

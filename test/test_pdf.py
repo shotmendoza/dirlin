@@ -1,5 +1,5 @@
 from dirlin import Folder
-from dirlin.pdf import PDFFile
+from dirlin import PDFFile
 
 
 f = Folder("/Volumes/USB321FD/Commission Statements")

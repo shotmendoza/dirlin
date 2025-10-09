@@ -30,7 +30,7 @@ class DirlinFormatter:
         # ===NOTE===
         # idea is that sometimes when you remove certain symbols, you end up with duplicate column names
         # to prevent this with `#` (member vs member#) we added this functionality
-        if convert_hashtag is True:
+        if convert_hashtag:
             if name.startswith('#'):
                 name = name[1:] + '#'  # move the hashtag to the end
             # checks if there's a `#` not at the end
@@ -67,7 +67,7 @@ class DirlinFormatter:
     def convert_string_to_integer(
             cls,
             key_field: pd.Series,
-            balance_field: pd.Series | None = None
+            balance_field: pd.Series = None
     ) -> pd.Series:
         """may be used for something like limits in coverages, but will parse and format a pd.Series of strings
         in a pd.Series of integers

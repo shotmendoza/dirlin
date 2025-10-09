@@ -1,6 +1,6 @@
 import pytest
 
-from dirlin.src.pipeline import Check, Validation, Report, Pipeline
+from dirlin import Check, Validation, Report, Pipeline
 from test.test_pipelines.test_pipeline_fixtures import single_stock_df, std_check_function, two_stock_df, \
     single_stock_df_b, series_check_function, same_name_check, similar_field_name_df
 

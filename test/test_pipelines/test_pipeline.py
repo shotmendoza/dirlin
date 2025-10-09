@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from dirlin import FolderPath
-from dirlin.src.pipeline import Pipeline, Report, Check, Validation
+from dirlin import Pipeline, Report, Check, Validation
 
 
 class TestPipeLine:

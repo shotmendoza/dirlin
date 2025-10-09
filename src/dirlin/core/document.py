@@ -25,14 +25,14 @@ class Document:
         :param raise_error: defaults to raising error for missing column. When False, only returns bool
         :return: True if all columns are present. False if any or all columns are missing (param dependent)
         """
-        if match_all is True:
-            if any([h in self.dataframe.columns for h in headers]) is False:
+        if match_all:
+            if any([h in self.dataframe.columns for h in headers]):
                 if raise_error:
                     raise KeyError(f"Missing on or all expected columns {headers} in {self.filepath.stem} file.")
                 return False
             return True
 
-        if any([h in self.dataframe.columns for h in headers]) is True:
+        if any([h in self.dataframe.columns for h in headers]):
             return True
         else:
             if raise_error:
@@ -69,7 +69,7 @@ class Document:
         chunks = [self.dataframe[i*chunk_size: (i+1)*chunk_size] for i in range(number_of_chunks)]
 
         # Determining whether we're going to write to disc or not
-        if write is True:
+        if write:
             for idx, df in enumerate(chunks):
                 if not filename_prefix:
                     filename_prefix = f"{self.filepath.stem} - {date.today()}"

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from dirlin.validation import BaseValidation
+from dirlin import BaseValidation
 
 
 def example_dataframe_factory() -> pd.DataFrame:
