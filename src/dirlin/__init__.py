@@ -2,7 +2,7 @@
 
 __version__ = "0.4.0"
 
-from dirlin.core.api import (
+from .core.api import (
     DirlinFormatter,  # formatting functions
     Document,  # special dataframe wrapper
     TqdmLoggingHandler  # logger
@@ -12,10 +12,6 @@ from dirlin.folder import (
     Folder,  # directory handling
     Directory,  # pre-made Folder manager
     Path,  # pathlib.Path,
-)
-
-from dirlin.validation import (
-    BaseValidation  # used for Validation pipeline
 )
 
 import pandas  # using the Pandas library
@@ -29,7 +25,6 @@ __all__ = [
     "Folder",
     "Directory",
     "Path",
-    "BaseValidation",
     "pandas",
     "numpy"
 ]

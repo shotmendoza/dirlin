@@ -88,7 +88,7 @@ class PDFFile:
 
         # 2025.06.08 going to push a problem into the future
         # we're going to assume that if we use the pyPDF we need to rotate the PDF
-        if pdf_info.errors() is True:
+        if pdf_info.errors():
             error_pages = pdf_info.from_pypdf()
             path = helper.rotate_pdf(error_pages)
 
